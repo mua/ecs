@@ -1,0 +1,20 @@
+
+
+gbuffer:
+  provides: [normals, depth]
+  output:
+    - normals: vec3
+    - depth: float
+
+ssao:
+  requires: [normals]
+  provides: [ssao]
+  output:
+    ssaoNormals: vec3
+
+shadowMap:
+  requires: []
+  provides: [shadowMap]
+
+compose:
+  requires: [ssao, depth, shadowMap] 

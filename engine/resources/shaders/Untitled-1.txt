@@ -1,0 +1,43 @@
+for pass in passes:
+	bind pipeline
+	bind target
+	bind resources
+	render
+
+enum AttachmentName
+{
+    None,
+	Normal,
+	Position,
+	Depth,
+	SSAO,	
+}
+
+struct Pipeline 
+{
+	
+}
+
+struct Subpass
+{
+	Pipeline pipeline;
+	AttachmentName inputs[5];
+	AttachmentName outputs[5];
+}
+
+struct RenderPass
+{
+	Subpass subpasses[5];
+}
+
+struct SubpassInstance
+{
+    Subpass subpass;
+    Framebuffer target;
+}
+
+struct RenderPassInstance
+{
+    RenderPass renderPass;
+    SubpassInstance subpasses[5];
+}

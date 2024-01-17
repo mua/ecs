@@ -1,0 +1,42 @@
+transform:
+  provides: [screenSpaceTransform]
+  type: "vertex"
+  in:
+    attributes:
+        position: vec3
+    uniforms:
+        projection: mat4
+        view: mat4
+        model: mat4
+  out:
+      gl_Position: vec4            
+  glsl: |
+      gl_Position = projection * view * position;
+
+vertexColor:
+  type: "vertex"
+  provides: [vertexColor]
+  in:
+      attributes:
+          color: vec3
+  out:
+      vertexColor: vec4
+  glsl: |
+      vertexColor = color
+
+materialColor:
+  type: "fragment"
+  requires: [vertexColor]
+  provides: [materialColor]  
+  in:
+      var:
+          vertexColor: vec4
+      unforms:
+          diffuseColor: vec4
+  out:
+      materialColor: vec4
+  glsl: |
+      materialColor = vertexColor * diffuseColor
+      vec4 test() {
+        materialColor = vertexColor * diffuseColor
+      }

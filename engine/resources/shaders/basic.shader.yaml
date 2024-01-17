@@ -1,0 +1,254 @@
+transform:
+    provides: [transform]
+    stage: vertex
+    in:
+        attributes:
+            - position: vec3
+        uniforms:
+            - model: mat4            
+            - view: mat4 
+            - projection: mat4
+    out:
+        - wPosition: vec4
+        - pPosition: vec4
+    glsl: |
+        wPosition = model * vec4(position, 1.0);
+        pPosition = projection * view * wPosition;
+        gl_Position = pPosition;
+
+ndcTransform:
+    provides: [ndcTransform]
+    stage: vertex
+    in:
+        uniforms:
+            - view: mat4
+            - projection: mat4
+        attributes:
+            - position: vec3
+    out:
+        - pPosition: vec4
+    glsl: |        
+        pPosition = vec4(position, 1.0);
+        gl_Position = pPosition;
+
+skinning:
+    provides: [skinning, transform]
+    stage: vertex
+    in:
+        attributes:
+            - boneWeights: vec4
+        uniforms:
+            - projection: mat4
+            - view: mat4
+            - model: mat4
+            - bones: mat4[64]
+    out:
+        - worldPosition: vec4
+        - screenPosition: vec4
+    glsl: |
+        gl_Position = projection * view * vec4(position, 1.0);
+
+vertexColor:
+    stage: vertex
+    provides: [vertexColor]
+    in:
+        attributes:
+            - color: vec4
+    out:
+        - vertexColor: vec4
+    glsl: |
+        vertexColor = color;
+
+textureCoords:
+    stage: vertex
+    provides: [textureCoords]
+    in:
+        attributes:
+            - uv: vec2
+    out:
+        - textureCoords: vec2
+    glsl: |
+        textureCoords = uv;        
+
+vertexNormal:
+    stage: vertex
+    provides: [vertexNormal]    
+    in:
+        attributes:
+            - normal: vec3
+    out:
+        - vertexNormal: vec3
+    glsl: |
+        vertexNormal = normalize(normal);
+
+worldVertexNormal:
+    stage: vertex
+    requires: [vertexNormal]
+    provides: [worldVertexNormal]
+    in:
+        uniforms:
+            - model: mat4
+    out:
+        - worldVertexNormal: vec3
+    glsl: |
+        worldVertexNormal = model * vec4(vertexNormal, 0.0);
+
+clipVertexNormal:
+    stage: vertex
+    requires: [vertexNormal, transform]
+    provides: [clipVertexNormal]
+    in:
+        uniforms:
+            - model: mat4            
+            - view: mat4
+            - projection: mat4  
+        vars:
+            - vertexNormal: vec3          
+    out:
+        - pVertexNormal: vec3
+    glsl: |
+        pVertexNormal = vec3(projection * view *  model * vec4(vertexNormal, 0.0));
+
+materialColor:
+    stage: fragment
+    requires: [vertexColor]
+    provides: [materialColor]
+    in:
+        uniforms:
+            - diffuseColor: vec4
+        vars: 
+            - vertexColor: vec4
+    out:
+        - color: vec4
+    glsl: |
+        color = vertexColor * diffuseColor;       
+        
+texturedMaterialColor:
+    stage: fragment
+    requires: [vertexColor, materialColor, textureCoords]
+    provides: [texturedMaterialColor]
+    in:
+        uniforms:
+            - baseColorTexture: sampler2D
+            - mapPosition: sampler2D
+            - mapNormal: sampler2D
+        vars: 
+            - textureCoords: vec2
+            - color: vec4
+    out:
+        - color: vec4
+    glsl: |
+        vec2 sc = vec2(pPosition.x, pPosition.y) / pPosition.w * 0.5 + vec2(0.5, 0.5);
+        color = color * texture(baseColorTexture, textureCoords) * texture(mapNormal, sc);
+
+lighting:
+    stage: fragment
+    requires: [worldVertexNormal]
+    provides: [lighting]
+    in:
+        uniforms:
+            - lights: vec3[16]
+        vars:
+            - worldVertexNormal: vec3
+    out:
+        - lighting: float
+    glsl: |
+        for (int i=0; i<16; i++)
+           lighting += dot(normal, lights[i].direction) * lights[i].intensity;
+
+litVertexColor:
+    stage: fragment
+    requires: [vertexColor, lighting]
+    provides: [litVertexColor]
+    in:
+        attributes:
+            - color: vec4
+        vars:
+            - vertexColor: vec4
+            - lighting: float
+    out:
+        - color: vec4
+    glsl: |
+        litVertexColor = vertexColor * light
+
+litMaterialColor:
+    stage: fragment
+    requires: [materialColor, lighting, litVertexColor]
+    provides: [litMaterialColor]
+    in:
+        uniforms:
+            - diffuseColor: vec4
+        vars:
+            - color: vec4
+            - lighting: float
+    out:
+        - color: vec4
+    glsl: |
+        materialColor = diffuseColor * litVertexColor;
+
+ssaoGen:
+    stage: fragment
+    requires: [ndcTransform]
+    provides: [ssaoGen]
+    in:
+        uniforms:
+            - mapPosition: sampler2D
+            - mapNormal: sampler2D
+            - ssaoNoiseTexture: sampler2D
+            - ssaoKernel: vec3[64]            
+    out:
+        - color: vec4
+    glsl: |
+        int kernelSize = 64;
+        float radius = 0.5;
+        float bias = 0.025;
+
+        ivec2 size = textureSize(mapPosition, 1);
+        vec2 noiseScale = vec2(float(size.x), float(size.y)) / 4.0;
+
+        vec2 sc = vec2(pPosition.x, pPosition.y) / pPosition.w * 0.5 + vec2(0.5, 0.5);
+        vec3 normal = normalize(texture(mapNormal, sc).xyz);
+        //normal = vec3(1,0,0);
+
+        vec3 fragPos = texture(mapPosition, sc).xyz;
+
+        vec3 randomVec = normalize(texture(ssaoNoiseTexture, sc * noiseScale).xyz);
+        vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
+        vec3 bitangent = cross(normal, tangent);
+        mat3 TBN = mat3(tangent, bitangent, normal);
+        // iterate over the sample kernel and calculate occlusion factor
+        float occlusion = 0.0;
+        for(int i = 0; i < kernelSize; ++i)
+        {
+            // get sample position
+            vec3 smp = TBN * ssaoKernel[i]; // from tangent to view-space
+            smp = fragPos + smp * radius; 
+            
+            // project sample position (to sample texture) (to get position on screen/texture)
+            vec4 offset = vec4(smp, 1.0);
+            offset = projection * offset; // from view to clip-space
+            offset.xyz /= offset.w; // perspective divide
+            offset.xyz = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0
+            
+            // get sample depth
+            float sampleDepth = texture(mapPosition, offset.xy).z; // get depth value of kernel sample
+            
+            // range check & accumulate
+            float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
+            occlusion += (sampleDepth >= smp.z + bias ? 1.0 : 0.0) * rangeCheck;           
+        }
+        occlusion = 1.0 - (occlusion / float(kernelSize));
+        color = vec4(occlusion);
+
+ssao:
+    stage: fragment
+    requires: [transform]
+    provides: [ssao]
+    in:
+        uniforms:
+            - mapSSAO: sampler2D
+    out:
+        - color: vec4
+    glsl: |
+        vec2 sc = vec2(pPosition.x, pPosition.y) / pPosition.w * 0.5 + vec2(0.5, 0.5);
+        color *= texture(mapSSAO, sc);

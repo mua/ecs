@@ -1,0 +1,26 @@
+{
+ "attributes": [
+  {
+   "name": "position",
+   "type": "vec3"
+  }
+ ],
+ "uniforms": [
+  {
+   "name": "view",
+   "type": "mat4"
+  },
+  {
+   "name": "projection",
+   "type": "mat4"
+  },
+  {
+   "name": "mapPosition",
+   "type": "sampler2D"
+  },
+  {
+   "name": "mapNormal",
+   "type": "sampler2D"
+  }
+ ]
+}
